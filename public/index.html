@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Webhook Monitor</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 2.5rem 1.25rem;
+      font: 15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 760px; margin-inline: auto;
+      color: #1a1a1a; background: #fafafa;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e8e8e8; background: #131313; }
+      code, pre { background: #1e1e1e !important; }
+      .card { background: #1a1a1a; border-color: #2a2a2a; }
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+    .sub { color: #888; margin: 0 0 1.75rem; }
+    .card { border: 1px solid #e3e3e3; border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 1rem; background: #fff; }
+    .status { display: inline-flex; align-items: center; gap: .5rem; font-weight: 600; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #bbb; }
+    .dot.ok { background: #22c55e; } .dot.bad { background: #ef4444; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    td { padding: .45rem .5rem; border-top: 1px solid #ececec; vertical-align: top; }
+    @media (prefers-color-scheme: dark) { td { border-color: #262626; } }
+    tr:first-child td { border-top: 0; }
+    .m { font-weight: 600; color: #7c3aed; white-space: nowrap; }
+    code { background: #f0f0f0; padding: .1rem .35rem; border-radius: 4px; font-size: 13px; }
+    pre { background: #f0f0f0; padding: .85rem 1rem; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+    a { color: #7c3aed; }
+  </style>
+</head>
+<body>
+  <h1>Webhook Monitor</h1>
+  <p class="sub">Servidor de webhooks multi-projeto — Vercel + Neon</p>
+
+  <div class="card">
+    <span class="status"><span id="dot" class="dot"></span><span id="statusText">verificando…</span></span>
+  </div>
+
+  <div class="card">
+    <strong>Endpoints</strong>
+    <table>
+      <tr><td class="m">POST</td><td><code>/api/ingest/{cliente}/{projeto}</code><br>recebe um evento · header <code>X-Webhook-Secret</code></td></tr>
+      <tr><td class="m">GET</td><td><code>/api/events</code><br>consulta eventos · header <code>Authorization: Bearer &lt;ADMIN_TOKEN&gt;</code></td></tr>
+      <tr><td class="m">GET/POST</td><td><code>/api/clients</code> · <code>/api/projects</code><br>gestão · header <code>Authorization: Bearer &lt;ADMIN_TOKEN&gt;</code></td></tr>
+      <tr><td class="m">POST</td><td><code>/api/migrate</code><br>cria o schema no banco (uma vez)</td></tr>
+      <tr><td class="m">GET</td><td><code>/api/health</code><br>status do serviço</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <strong>Enviar um evento</strong>
+    <pre>curl -X POST "$APP/api/ingest/acme/site-vendas" \
+  -H "X-Webhook-Secret: &lt;segredo-do-projeto&gt;" \
+  -H "X-Event-Type: order.paid" \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":123,"total":49.9}'</pre>
+    <p style="margin:.5rem 0 0">Veja o <a href="https://github.com/egnever543/webhooks#readme">README</a> para o passo a passo completo.</p>
+  </div>
+
+  <script>
+    fetch('/api/health').then(r => r.json()).then(d => {
+      const ok = d.status === 'ok' && d.db;
+      document.getElementById('dot').className = 'dot ' + (ok ? 'ok' : 'bad');
+      document.getElementById('statusText').textContent =
+        ok ? 'Serviço no ar · banco conectado'
+           : 'Serviço no ar · banco NÃO conectado (configure DATABASE_URL)';
+    }).catch(() => {
+      document.getElementById('dot').className = 'dot bad';
+      document.getElementById('statusText').textContent = 'Falha ao consultar /api/health';
+    });
+  </script>
+</body>
+</html>
