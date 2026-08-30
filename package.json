@@ -1,0 +1,19 @@
+{
+  "name": "webhook-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servidor de webhooks multi-projeto: recebe, armazena e consulta eventos de vários sistemas.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --experimental-strip-types scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vercel/node": "^5.0.0",
+    "typescript": "^5.7.0"
+  }
+}
