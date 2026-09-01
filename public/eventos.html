@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recebimentos — Webhook Monitor</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#fafafa; --card:#fff; --bd:#e3e3e3; --mut:#888; --acc:#7c3aed; --code:#f0f0f0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#131313; --card:#1a1a1a; --bd:#2a2a2a; --mut:#999; --code:#1e1e1e; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:1.5rem 1rem; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+           color:inherit; background:var(--bg); max-width:1080px; margin-inline:auto; }
+    h1 { font-size:1.3rem; margin:0 0 1rem; }
+    .bar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:1rem; }
+    input, button { font:inherit; padding:.5rem .7rem; border:1px solid var(--bd); border-radius:8px;
+                    background:var(--card); color:inherit; }
+    input { min-width:130px; }
+    button { cursor:pointer; background:var(--acc); color:#fff; border-color:var(--acc); font-weight:600; }
+    button.ghost { background:var(--card); color:inherit; border-color:var(--bd); font-weight:500; }
+    .msg { color:var(--mut); margin:.5rem 0; }
+    .err { color:#ef4444; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { text-align:left; padding:.55rem .6rem; border-top:1px solid var(--bd); vertical-align:top; font-size:13px; }
+    th { color:var(--mut); font-weight:600; border-top:0; position:sticky; top:0; background:var(--bg); }
+    tr:hover td { background:rgba(124,58,237,.05); }
+    .tag { display:inline-block; padding:.1rem .4rem; border-radius:4px; background:var(--code); font-size:12px; }
+    .type { color:var(--acc); font-weight:600; }
+    pre { margin:.4rem 0 0; background:var(--code); padding:.6rem .8rem; border-radius:6px; overflow-x:auto;
+          font-size:12px; max-width:520px; }
+    details summary { cursor:pointer; color:var(--mut); }
+    .row-actions { display:flex; gap:.5rem; align-items:center; }
+    .when { white-space:nowrap; color:var(--mut); }
+    label.chk { display:inline-flex; gap:.35rem; align-items:center; color:var(--mut); }
+  </style>
+</head>
+<body>
+  <h1>Recebimentos</h1>
+
+  <div class="bar">
+    <input id="token" type="password" placeholder="ADMIN_TOKEN" style="min-width:220px" />
+    <input id="client" placeholder="cliente (opcional)" />
+    <input id="project" placeholder="projeto (opcional)" />
+    <input id="type" placeholder="tipo (opcional)" />
+    <button id="load">Buscar</button>
+    <button id="more" class="ghost" hidden>Carregar mais</button>
+    <label class="chk"><input type="checkbox" id="auto" /> auto-atualizar (10s)</label>
+  </div>
+
+  <p id="msg" class="msg">Cole o ADMIN_TOKEN e clique em Buscar. Os filtros são opcionais.</p>
+
+  <table id="tbl" hidden>
+    <thead><tr><th>Quando (UTC)</th><th>Cliente</th><th>Projeto</th><th>Tipo</th><th>Payload</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const LS = 'wm_admin_token';
+    try { $('token').value = localStorage.getItem(LS) || ''; } catch {}
+
+    let nextBefore = null;
+    let timer = null;
+
+    function qs(before) {
+      const p = new URLSearchParams();
+      if ($('client').value.trim()) p.set('client', $('client').value.trim());
+      if ($('project').value.trim()) p.set('project', $('project').value.trim());
+      if ($('type').value.trim()) p.set('type', $('type').value.trim());
+      p.set('limit', '50');
+      if (before) p.set('before', before);
+      return p.toString();
+    }
+
+    function rowHtml(e) {
+      const when = new Date(e.received_at).toISOString().replace('T', ' ').slice(0, 19);
+      const payload = JSON.stringify(e.payload, null, 2);
+      const short = payload.length > 120 ? payload.slice(0, 120) + '…' : payload;
+      return `<tr>
+        <td class="when">${when}</td>
+        <td><span class="tag">${e.client_id}</span></td>
+        <td><span class="tag">${e.project_id}</span></td>
+        <td>${e.type ? `<span class="type">${e.type}</span>` : '<span class="msg">—</span>'}</td>
+        <td><details><summary>${escapeHtml(short)}</summary><pre>${escapeHtml(payload)}</pre></details></td>
+      </tr>`;
+    }
+    function escapeHtml(s) { return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+    async function fetchEvents(before) {
+      const token = $('token').value.trim();
+      if (!token) { setMsg('Informe o ADMIN_TOKEN.', true); return; }
+      try { localStorage.setItem(LS, token); } catch {}
+      setMsg('Carregando…');
+      let r;
+      try {
+        r = await fetch('/api/events?' + qs(before), { headers: { Authorization: 'Bearer ' + token } });
+      } catch { setMsg('Falha de rede ao consultar /api/events.', true); return; }
+      if (r.status === 401) { setMsg('ADMIN_TOKEN inválido (401).', true); return; }
+      if (!r.ok) { setMsg('Erro ' + r.status + ' ao consultar.', true); return; }
+      const data = await r.json();
+      if (!before) $('rows').innerHTML = '';
+      $('rows').insertAdjacentHTML('beforeend', data.events.map(rowHtml).join(''));
+      $('tbl').hidden = false;
+      nextBefore = data.next_before;
+      $('more').hidden = !nextBefore || data.events.length === 0;
+      const total = $('rows').children.length;
+      setMsg(total ? `${total} evento(s) exibido(s).` : 'Nenhum evento encontrado para esses filtros.');
+    }
+    function setMsg(t, isErr) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (isErr ? ' err' : ''); }
+
+    $('load').onclick = () => fetchEvents(null);
+    $('more').onclick = () => fetchEvents(nextBefore);
+    [$('client'), $('project'), $('type'), $('token')].forEach(el =>
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') fetchEvents(null); }));
+    $('auto').onchange = (e) => {
+      clearInterval(timer);
+      if (e.target.checked) timer = setInterval(() => fetchEvents(null), 10000);
+    };
+  </script>
+</body>
+</html>
