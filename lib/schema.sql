@@ -35,3 +35,24 @@ CREATE INDEX IF NOT EXISTS idx_events_client_project
 
 CREATE INDEX IF NOT EXISTS idx_events_type
   ON events (type);
+
+-- Monitor de tráfego (track.js): contadores por site, sem guardar cada visita.
+CREATE TABLE IF NOT EXISTS project_stats (
+  client_id     TEXT NOT NULL,
+  project_id    TEXT NOT NULL,
+  last_seen     TIMESTAMPTZ,
+  last_paid_at  TIMESTAMPTZ,
+  last_free_at  TIMESTAMPTZ,
+  total_paid    BIGINT NOT NULL DEFAULT 0,
+  total_free    BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (client_id, project_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_daily (
+  client_id   TEXT NOT NULL,
+  project_id  TEXT NOT NULL,
+  day         DATE NOT NULL,
+  paid        BIGINT NOT NULL DEFAULT 0,
+  free        BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (client_id, project_id, day)
+);

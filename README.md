@@ -87,6 +87,30 @@ curl "$APP/api/events?client=acme&project=site-vendas&limit=20" \
 
 Filtros: `client`, `project`, `type`, `limit` (1–200), `before` (paginação por id).
 
+## Monitor de sites (tráfego pago × grátis)
+
+Para saber se seus sites estão recebendo acesso — e se é tráfego pago ou orgânico —
+sem armazenar cada visita, use o pixel `track.js`. Ele atualiza apenas contadores
+por site (última visita, total pago/grátis e o total de hoje).
+
+1. Cadastre o site como um projeto (`POST /api/projects`).
+2. Cole o snippet em cada página do site:
+
+   ```html
+   <script src="https://SEU-APP.vercel.app/track.js"
+           data-client="acme" data-project="site-vendas"></script>
+   ```
+
+3. Acompanhe em **`/sites`** — um card por site, ao vivo (atualiza a cada 15s),
+   com bolinha verde quando houve visita nos últimos 10 min.
+
+Classificação **pago**: presença de `gclid`/`gbraid`/`wbraid` (Google Ads),
+`msclkid` (Bing), `ttclid` (TikTok), `twclid` (X) ou `utm_medium` de mídia paga
+(`cpc`, `ppc`, `paid`, `display`, ...). Qualquer outra origem conta como **grátis**.
+
+O endpoint `POST /api/track/{cliente}/{projeto}` é **público** (roda no navegador,
+por isso não usa segredo) e só contabiliza sites já cadastrados e ativos.
+
 ## Segurança
 
 - Ingestão: segredo por projeto (`X-Webhook-Secret`), comparado em tempo constante.
