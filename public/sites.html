@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor de Sites — Webhook Monitor</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#fafafa; --card:#fff; --bd:#e3e3e3; --mut:#888; --acc:#7c3aed; --code:#f0f0f0; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#131313; --card:#1a1a1a; --bd:#2a2a2a; --mut:#999; --code:#1e1e1e; } }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:1.5rem 1rem; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+           color:inherit; background:var(--bg); max-width:960px; margin-inline:auto; }
+    h1 { font-size:1.3rem; margin:0 0 1rem; }
+    .bar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:1rem; }
+    input, button { font:inherit; padding:.5rem .7rem; border:1px solid var(--bd); border-radius:8px; background:var(--card); color:inherit; }
+    button { cursor:pointer; background:var(--acc); color:#fff; border-color:var(--acc); font-weight:600; }
+    button.ghost { background:var(--card); color:inherit; border-color:var(--bd); font-weight:500; }
+    .msg { color:var(--mut); margin:.5rem 0; }
+    .err { color:#ef4444; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.9rem; }
+    .card { border:1px solid var(--bd); border-radius:12px; padding:1rem; background:var(--card); }
+    .head { display:flex; align-items:center; gap:.5rem; }
+    .dot { width:11px; height:11px; border-radius:50%; background:#bbb; flex:none; }
+    .dot.live { background:#22c55e; box-shadow:0 0 0 4px rgba(34,197,94,.15); }
+    .dot.recent { background:#eab308; }
+    .dot.stale { background:#9ca3af; }
+    .name { font-weight:600; }
+    .ids { color:var(--mut); font-size:12px; }
+    .seen { margin:.6rem 0 .4rem; color:var(--mut); font-size:13px; }
+    .nums { display:flex; gap:1.2rem; margin-top:.4rem; }
+    .num b { font-size:1.35rem; display:block; }
+    .paid b { color:var(--acc); } .free b { color:#0ea5e9; }
+    .num span { color:var(--mut); font-size:12px; }
+    details { margin-top:.7rem; }
+    details summary { cursor:pointer; color:var(--mut); font-size:12px; }
+    pre { margin:.4rem 0 0; background:var(--code); padding:.6rem; border-radius:6px; overflow-x:auto; font-size:11px; white-space:pre-wrap; word-break:break-all; }
+    .copy { margin-top:.4rem; font-size:12px; padding:.35rem .6rem; }
+    label.chk { display:inline-flex; gap:.35rem; align-items:center; color:var(--mut); }
+    a { color:var(--acc); }
+  </style>
+</head>
+<body>
+  <h1>Monitor de Sites</h1>
+  <div class="bar">
+    <input id="token" type="password" placeholder="ADMIN_TOKEN" style="min-width:240px" />
+    <button id="load">Atualizar</button>
+    <label class="chk"><input type="checkbox" id="auto" checked /> ao vivo (15s)</label>
+    <span style="margin-left:auto"><a href="/eventos.html">Ver webhooks →</a></span>
+  </div>
+  <p id="msg" class="msg">Cole o ADMIN_TOKEN e clique em Atualizar.</p>
+  <div id="grid" class="grid"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const LS = 'wm_admin_token';
+    try { $('token').value = localStorage.getItem(LS) || ''; } catch {}
+    let timer = null;
+
+    function rel(ts) {
+      if (!ts) return 'nunca';
+      const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+      if (s < 60) return 'há ' + s + 's';
+      if (s < 3600) return 'há ' + Math.floor(s / 60) + ' min';
+      if (s < 86400) return 'há ' + Math.floor(s / 3600) + ' h';
+      return 'há ' + Math.floor(s / 86400) + ' d';
+    }
+    function dotClass(ts) {
+      if (!ts) return 'stale';
+      const s = (Date.now() - new Date(ts).getTime()) / 1000;
+      if (s < 600) return 'live';       // < 10 min
+      if (s < 86400) return 'recent';   // < 24 h
+      return 'stale';
+    }
+    function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    function snippet(site) {
+      return '<script src="' + location.origin + '/track.js"\n  data-client="' +
+        esc(site.client_id) + '" data-project="' + esc(site.project_id) + '"><\/script>';
+    }
+
+    function card(site) {
+      const seen = site.last_seen;
+      return `<div class="card">
+        <div class="head"><span class="dot ${dotClass(seen)}"></span>
+          <span><span class="name">${esc(site.name)}</span><br><span class="ids">${esc(site.client_id)} / ${esc(site.project_id)}</span></span>
+        </div>
+        <div class="seen">Última visita: <strong>${rel(seen)}</strong></div>
+        <div class="nums">
+          <div class="num paid"><b>${site.today_paid}</b><span>pagos hoje</span></div>
+          <div class="num free"><b>${site.today_free}</b><span>grátis hoje</span></div>
+        </div>
+        <div class="ids" style="margin-top:.5rem">Total: ${site.total_paid} pagos · ${site.total_free} grátis</div>
+        <details>
+          <summary>snippet pra colar neste site</summary>
+          <pre id="snip-${esc(site.client_id)}-${esc(site.project_id)}">${esc(snippet(site))}</pre>
+          <button class="ghost copy" data-target="snip-${esc(site.client_id)}-${esc(site.project_id)}">Copiar</button>
+        </details>
+      </div>`;
+    }
+
+    async function load() {
+      const token = $('token').value.trim();
+      if (!token) { setMsg('Informe o ADMIN_TOKEN.', true); return; }
+      try { localStorage.setItem(LS, token); } catch {}
+      let r;
+      try { r = await fetch('/api/stats', { headers: { Authorization: 'Bearer ' + token } }); }
+      catch { setMsg('Falha de rede ao consultar /api/stats.', true); return; }
+      if (r.status === 401) { setMsg('ADMIN_TOKEN inválido (401).', true); return; }
+      if (!r.ok) {
+        let extra = ''; try { const e = await r.json(); extra = e.hint || e.detail || ''; } catch {}
+        setMsg('Erro ' + r.status + (extra ? ' — ' + extra : ''), true); return;
+      }
+      const { sites } = await r.json();
+      if (!sites.length) {
+        setMsg('Nenhum site cadastrado ainda. Crie um projeto (POST /api/projects) para começar.');
+        $('grid').innerHTML = ''; return;
+      }
+      $('grid').innerHTML = sites.map(card).join('');
+      bindCopy();
+      setMsg(sites.length + ' site(s) · atualizado ' + new Date().toLocaleTimeString());
+    }
+    function bindCopy() {
+      document.querySelectorAll('button.copy').forEach(b => b.onclick = () => {
+        const el = document.getElementById(b.dataset.target);
+        navigator.clipboard?.writeText(el.textContent).then(() => { b.textContent = 'Copiado!'; setTimeout(() => b.textContent = 'Copiar', 1500); });
+      });
+    }
+    function setMsg(t, isErr) { const m = $('msg'); m.textContent = t; m.className = 'msg' + (isErr ? ' err' : ''); }
+
+    $('load').onclick = load;
+    $('auto').onchange = (e) => { clearInterval(timer); if (e.target.checked) timer = setInterval(load, 15000); };
+    if ($('token').value) { load(); if ($('auto').checked) timer = setInterval(load, 15000); }
+  </script>
+</body>
+</html>
