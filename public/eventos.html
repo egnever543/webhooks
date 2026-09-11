@@ -44,6 +44,7 @@
     <input id="project" placeholder="projeto (opcional)" />
     <input id="type" placeholder="tipo (opcional)" />
     <button id="load">Buscar</button>
+    <button id="migrate" class="ghost">Criar tabelas</button>
     <button id="more" class="ghost" hidden>Carregar mais</button>
     <label class="chk"><input type="checkbox" id="auto" /> auto-atualizar (10s)</label>
   </div>
@@ -97,7 +98,12 @@
         r = await fetch('/api/events?' + qs(before), { headers: { Authorization: 'Bearer ' + token } });
       } catch { setMsg('Falha de rede ao consultar /api/events.', true); return; }
       if (r.status === 401) { setMsg('ADMIN_TOKEN inválido (401).', true); return; }
-      if (!r.ok) { setMsg('Erro ' + r.status + ' ao consultar.', true); return; }
+      if (!r.ok) {
+        let extra = '';
+        try { const err = await r.json(); extra = err.hint || err.detail || ''; } catch {}
+        setMsg('Erro ' + r.status + ' ao consultar' + (extra ? ' — ' + extra : '.'), true);
+        return;
+      }
       const data = await r.json();
       if (!before) $('rows').innerHTML = '';
       $('rows').insertAdjacentHTML('beforeend', data.events.map(rowHtml).join(''));
@@ -111,6 +117,24 @@
 
     $('load').onclick = () => fetchEvents(null);
     $('more').onclick = () => fetchEvents(nextBefore);
+    $('migrate').onclick = async () => {
+      const token = $('token').value.trim();
+      if (!token) { setMsg('Informe o ADMIN_TOKEN.', true); return; }
+      try { localStorage.setItem(LS, token); } catch {}
+      setMsg('Criando tabelas…');
+      try {
+        const r = await fetch('/api/migrate', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+        if (r.status === 401) { setMsg('ADMIN_TOKEN inválido (401).', true); return; }
+        if (!r.ok) {
+          let extra = '';
+          try { const e = await r.json(); extra = e.detail || ''; } catch {}
+          setMsg('Falha ao migrar (' + r.status + ')' + (extra ? ' — ' + extra : '') +
+                 '. Verifique DATABASE_URL no Vercel.', true);
+          return;
+        }
+        setMsg('Tabelas criadas. Clique em Buscar.');
+      } catch { setMsg('Falha de rede ao chamar /api/migrate.', true); }
+    };
     [$('client'), $('project'), $('type'), $('token')].forEach(el =>
       el.addEventListener('keydown', e => { if (e.key === 'Enter') fetchEvents(null); }));
     $('auto').onchange = (e) => {

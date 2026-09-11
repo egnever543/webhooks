@@ -22,16 +22,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const before = req.query.before ? Number(req.query.before) : null; // paginação por id
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
 
-  const rows = await sql`
-    SELECT id, client_id, project_id, type, payload, source_ip, received_at
-    FROM events
-    WHERE (${client}::text IS NULL OR client_id = ${client})
-      AND (${project}::text IS NULL OR project_id = ${project})
-      AND (${type}::text IS NULL OR type = ${type})
-      AND (${before}::bigint IS NULL OR id < ${before})
-    ORDER BY id DESC
-    LIMIT ${limit}
-  `;
+  let rows;
+  try {
+    rows = await sql`
+      SELECT id, client_id, project_id, type, payload, source_ip, received_at
+      FROM events
+      WHERE (${client}::text IS NULL OR client_id = ${client})
+        AND (${project}::text IS NULL OR project_id = ${project})
+        AND (${type}::text IS NULL OR type = ${type})
+        AND (${before}::bigint IS NULL OR id < ${before})
+      ORDER BY id DESC
+      LIMIT ${limit}
+    `;
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    // Causa mais comum: migração não rodada (tabela não existe) ou DATABASE_URL ausente.
+    const needsMigrate = /relation .*events.* does not exist/i.test(detail);
+    return json(res, 500, {
+      error: 'query_failed',
+      detail,
+      hint: needsMigrate
+        ? 'A tabela "events" não existe. Rode POST /api/migrate uma vez.'
+        : 'Verifique DATABASE_URL nas variáveis de ambiente do Vercel.',
+    });
+  }
 
   return json(res, 200, {
     count: rows.length,

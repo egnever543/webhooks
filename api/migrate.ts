@@ -41,8 +41,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
   if (!isAdmin(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
 
-  for (const stmt of STATEMENTS) {
-    await sql(stmt);
+  try {
+    for (const stmt of STATEMENTS) {
+      await sql(stmt);
+    }
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return json(res, 500, {
+      error: 'migrate_failed',
+      detail,
+      hint: 'Verifique DATABASE_URL (pooled connection string do Neon) nas variáveis do Vercel.',
+    });
   }
   return json(res, 200, { ok: true, migrated: STATEMENTS.length });
 }
